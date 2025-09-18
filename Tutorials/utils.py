@@ -6,6 +6,7 @@ import xarray as xr
 from glob import glob
 import gcsfs
 from tqdm.notebook import tqdm
+import torch
 
 
 def make_dir(path):
@@ -103,3 +104,58 @@ def mean_std_plot(data,color,label,ax):
     ax.fill_between(yr,mean+std,mean-std,facecolor=color,alpha=0.4)
     
     return yr, mean
+
+def pytorch_train(model, optimizer, criterion, device, num_epochs, train_loader, val_loader):
+    best_val_loss = float('inf')
+    patience_counter = 0
+    patience = 20
+    
+    train_losses = []
+    val_losses = []
+    
+    for epoch in range(num_epochs):
+       # training
+       model.train()
+       train_loss = 0.0
+       for batch_X, batch_y in train_loader:
+           batch_X = batch_X.to(device)
+           batch_y = batch_y.to(device)
+           # forward pass
+           optimizer.zero_grad()
+           outputs = model(batch_X)
+           loss = criterion(outputs, batch_y)
+           # backward pass
+           loss.backward()
+           optimizer.step()
+           train_loss += loss.item()
+    
+        # validation
+       model.eval()
+       val_loss = 0.0
+       with torch.no_grad():
+           for batch_X, batch_y in val_loader:
+               batch_X = batch_X.to(device)
+               batch_y = batch_y.to(device)
+               
+               outputs = model(batch_X)
+               loss = criterion(outputs, batch_y)
+               val_loss += loss.item()
+       
+       train_loss /= len(train_loader)
+       val_loss /= len(val_loader)
+    
+       train_losses.append(train_loss)
+       val_losses.append(val_loss)
+       
+       print(f'Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
+       
+       if val_loss < best_val_loss:
+           best_val_loss = val_loss
+           patience_counter = 0
+       else:
+           patience_counter += 1
+           if patience_counter >= patience:
+               print(f'Early stopping at epoch {epoch+1}')
+               break
+   
+    return train_losses, val_losses
