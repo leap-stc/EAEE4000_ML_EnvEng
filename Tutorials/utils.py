@@ -221,3 +221,68 @@ def pytorch_train_VAE(model, optimizer, criterion, device, num_epochs, train_loa
                 break
     
     return train_losses, val_losses
+
+def prepare_spatial_data(X_train, y_train, lat, lon, n_subset=15000):
+    """
+    Flatten temporal-spatial data and add lat/lon as features.
+    
+    Args:
+        X_train: (n_time, 2) - CO2, CH4
+        y_train: (n_time, n_space) - temperature at each grid point
+        lat: (n_lat,) latitude values
+        lon: (n_lon,) longitude values
+        n_subset: number of random samples for training
+    
+    Returns:
+        X_flat: (n_subset, 4) - [CO2, CH4, lat, lon]
+        y_flat: (n_subset,)
+    """
+    n_time, n_space = y_train.shape
+    n_lat, n_lon = len(lat), len(lon)
+    
+    # Create meshgrid of lat/lon
+    lat_grid, lon_grid = np.meshgrid(lat, lon, indexing='ij')
+    lat_flat = lat_grid.flatten()  # (n_space,)
+    lon_flat = lon_grid.flatten()  # (n_space,)
+    
+    # Random subset of (time, space) indices
+    np.random.seed(42)
+    idx = np.random.choice(n_time * n_space, n_subset, replace=False)
+    time_idx, space_idx = np.unravel_index(idx, (n_time, n_space))
+    
+    # Build feature matrix: [CO2, CH4, lat, lon]
+    X_flat = np.column_stack([
+        X_train[time_idx, 0],      # CO2
+        X_train[time_idx, 1],      # CH4
+        lat_flat[space_idx],       # lat
+        lon_flat[space_idx]        # lon
+    ])
+    y_flat = y_train[time_idx, space_idx]
+    
+    return X_flat, y_flat, lat_flat, lon_flat
+
+
+def prepare_test_spatial(X_test, lat_flat, lon_flat):
+    """
+    Create test features for all (time, space) combinations.
+    
+    Args:
+        X_test: (n_test_time, 2)
+        lat_flat, lon_flat: (n_space,) each
+    
+    Returns:
+        X_test_full: (n_test_time * n_space, 4)
+    """
+    n_test = X_test.shape[0]
+    n_space = len(lat_flat)
+    
+    # Repeat each test time point for all spatial locations
+    X_test_full = np.column_stack([
+        np.repeat(X_test[:, 0], n_space),  # CO2
+        np.repeat(X_test[:, 1], n_space),  # CH4
+        np.tile(lat_flat, n_test),          # lat
+        np.tile(lon_flat, n_test)           # lon
+    ])
+    return X_test_full
+
+    
